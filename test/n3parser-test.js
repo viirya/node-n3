@@ -84,7 +84,7 @@ vows.describe('N3Parser').addBatch({
 
     'should not parse a triple with a literal and a qname type with an inexistent prefix':
       shouldNotParse('<a> <b> "string"^^x:z.',
-                     'Undefined prefix "x:" at line 1.'),
+                     new Error('Undefined prefix "x:" at line 1.')),
 
     'should parse triples with prefixes':
       shouldParse('@prefix : <#>.\n' +
@@ -102,19 +102,19 @@ vows.describe('N3Parser').addBatch({
 
     'should not parse undefined empty prefix in subject':
       shouldNotParse(':a ',
-                     'Undefined prefix ":" at line 1.'),
+                     new Error('Undefined prefix ":" at line 1.')),
 
     'should not parse undefined prefix in subject':
       shouldNotParse('a:a ',
-                     'Undefined prefix "a:" at line 1.'),
+                     new Error('Undefined prefix "a:" at line 1.')),
 
     'should not parse undefined prefix in predicate':
       shouldNotParse('<a> b:c ',
-                     'Undefined prefix "b:" at line 1.'),
+                     new Error('Undefined prefix "b:" at line 1.')),
 
     'should not parse undefined prefix in object':
       shouldNotParse('<a> <b> c:d ',
-                     'Undefined prefix "c:" at line 1.'),
+                     new Error('Undefined prefix "c:" at line 1.')),
 
     'should parse triples with SPARQL prefixes':
       shouldParse('PREFIX : <#>\n' +
@@ -167,7 +167,7 @@ vows.describe('N3Parser').addBatch({
 
     'should not parse a blank node with missing subject':
       shouldNotParse('<a> <b> [<c>].',
-                     'Expected object to follow "c" at line 1.'),
+                     new Error('Expected object to follow "c" at line 1.')),
 
     'should parse a multi-statement blank node':
       shouldParse('<a> <b> [ <u> <v>; <w> <z> ].',
@@ -323,15 +323,15 @@ vows.describe('N3Parser').addBatch({
 
     'should not parse improperly nested square brackets':
       shouldNotParse('<a> <b> [<c> <d>]].',
-                     'Expected punctuation to follow "_:b0" at line 1.'),
+                     new Error('Expected punctuation to follow "_:b0" at line 1.')),
 
     'should error when an object is not there':
       shouldNotParse('<a> <b>.',
-                     'Expected object to follow "b" at line 1.'),
+                     new Error('Expected object to follow "b" at line 1.')),
 
     'should error when a dot is not there':
       shouldNotParse('<a> <b> <c>',
-                     'Expected punctuation to follow "c" at line 1.'),
+                     new Error('Expected punctuation to follow "c" at line 1.')),
   },
   'An N3Parser instance with a document URI': {
     topic: function () { return function () { return new N3Parser({ documentURI: 'doc/file.ttl' }); }; },
@@ -356,26 +356,20 @@ vows.describe('N3Parser').addBatch({
 }).export(module);
 
 function shouldParse(input, expected) {
-  var result = [],
-      endCallback;
+  var result = [];
   expected = Array.prototype.slice.call(arguments, 1);
   var items = expected.map(function (item) {
     return { subject: item[0], predicate: item[1], object: item[2],
              context: item[3] || 'n3/contexts#default' };
   });
 
-  function tripleCallback(error, triple) {
-    expect(error).not.to.exist;
-    if (triple)
-      result.push(triple);
-    else
-      endCallback(null, result);
-  }
-
   return {
-    topic: function (n3parserFactory) {
-      endCallback = this.callback;
-      n3parserFactory().parse(input, tripleCallback);
+    topic: function (createParser) {
+      var parser = createParser();
+      parser.parse(input);
+      parser.on('data', result.push.bind(result));
+      parser.on('error', this.callback.bind(this));
+      parser.on('end',   this.callback.bind(this, null, result));
     },
 
     'should equal the expected value': function (result) {
@@ -387,23 +381,17 @@ function shouldParse(input, expected) {
 }
 
 function shouldNotParse(input, expectedError) {
-  var endCallback;
-
-  function tripleCallback(error, triple) {
-    if (error)
-      endCallback(error, triple);
-    else if (!triple)
-      throw "Expected error " + expectedError;
-  }
-
   return {
-    topic: function (n3parserFactory) {
-      endCallback = this.callback;
-      n3parserFactory().parse(input, tripleCallback);
+    topic: function (createParser) {
+      var parser = createParser();
+      parser.parse(input);
+      parser.on('error', this.callback.bind(this, null));
+      parser.on('error', parser.removeAllListeners.bind(parser, 'end'));
+      parser.on('end',   this.callback.bind(this, "Expected an error, but none was raised."));
+      parser.resume();
     },
 
-    'should equal the expected message': function (error, triple) {
-      expect(triple).not.to.exist;
+    'should equal the expected message': function (error) {
       error.should.eql(expectedError);
     }
   };
