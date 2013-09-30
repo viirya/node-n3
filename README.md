@@ -26,6 +26,25 @@ parser.parse('@prefix c: <http://example.org/cartoons#>.\n' +
              });
 ```
 
+### Async operation in parsing Turtle
+
+Slightly modified to work with async operation in parsing Turtle. For example:
+
+``` js
+var parser = new n3.Parser();
+parser.parse('@prefix c: <http://example.org/cartoons#>.\n' +
+             'c:Tom a c:Cat.\n' +
+             'c:Jerry a c:Mouse;\n' +
+             '        c:smarterThan c:Tom.',
+             function (error, triple, next) {
+               if (triple)
+                 console.log(triple.subject, triple.predicate, triple.object, '.');
+                 someAsyncOp(truple, function() { next();} );
+               else
+                 console.log("# That's it, folks!")
+             });
+```
+
 ## Storing and finding items
 
 In this example below, we create a new store and add the triples `:Pluto a :Dog.` and `:Mickey a :Mouse`.
